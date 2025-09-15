@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Memory - لعبة البطاقات</title>
+  <style>
+    :root{
+      --bg:#0f1724;
+      --card-back:#1f2937;
+      --accent:#06b6d4;
+      --white: #f8fafc;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial}
+    body{
+      background: linear-gradient(180deg,var(--bg), #071029);
+      color:var(--white);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:18px;
+    }
+    .app{
+      width:100%;
+      max-width:920px;
+      background:rgba(255,255,255,0.03);
+      border-radius:14px;
+      padding:16px;
+      box-shadow:0 10px 30px rgba(2,6,23,0.6);
+    }
+    header{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:12px;
+    }
+    h1{font-size:18px;margin:0}
+    .controls{display:flex;gap:8px;align-items:center}
+    .btn{
+      background:var(--card-back);
+      color:var(--white);
+      border:none;padding:10px 14px;border-radius:10px;font-weight:600;
+      box-shadow:inset 0 -2px 0 rgba(0,0,0,0.3);
+    }
+    .stats{display:flex;gap:12px;align-items:center;font-size:14px;opacity:0.95}
+    .board{
+      display:grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap:10px;
+      padding:10px;
+      background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+      border-radius:10px;
+    }
+
+    /* responsive: smaller screens -> 3 columns */
+    @media (max-width:480px){
+      .board{grid-template-columns: repeat(3, 1fr);}
+      .btn{padding:8px 10px}
+    }
+
+    .card{
+      position:relative;
+      width:100%;
+      padding-top:100%; /* square */
+      perspective:900px;
+      cursor:pointer;
+      border-radius:8px;
+      overflow:visible;
+      touch-action: manipulation;
+    }
+    .inner{
+      position:absolute; inset:0;
+      transition: transform 0.45s;
+      transform-style:preserve-3d;
+      border-radius:8px;
+    }
+    .card.flipped .inner{ transform: rotateY(180deg); }
+
+    .face{
+      position:absolute; inset:0;
+      display:flex;align-items:center;justify-content:center;
+      backface-visibility:hidden;
+      border-radius:8px;
+      font-size:28px;
+      user-select:none;
+    }
+    .front{
+      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+      transform: rotateY(180deg);
+      border:2px solid rgba(255,255,255,0.04);
+    }
+    .back{
+      background: linear-gradient(180deg, var(--card-back), #0b1220);
+      border: 2px solid rgba(255,255,255,0.03);
+      font-size:22px;
+      color:var(--white);
+    }
+
+    .matched .inner{ transform: scale(1.03) !important; filter: saturate(1.2); }
+    .hidden{ visibility:hidden; transform:scale(0.98); opacity:0; transition: all .4s; }
+
+    .footer{ display:flex; justify-content:space-between; margin-top:12px; align-items:center; gap:8px; flex-wrap:wrap;}
+    .difficulty { display:flex; gap:6px; align-items:center;}
+    .small { font-size:13px; opacity:0.9; }
+
+    /* modal */
+    .modal {
+      position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+      background:rgba(2,6,23,0.6); z-index:40; visibility:hidden; opacity:0; transition:.2s;
+    }
+    .modal.show{ visibility:visible; opacity:1; }
+    .dialog {
+      background: linear-gradient(180deg,#07122a,#041323);
+      border-radius:12px; padding:18px; color:var(--white); text-align:center; min-width:260px;
+      box-shadow:0 12px 40px rgba(2,6,23,0.6);
+    }
+    .dialog h2{margin:6px 0 4px;font-size:20px}
+    .dialog p{margin:6px 0 14px; opacity:0.9}
+  </style>
+</head>
+<body>
+  <div class="app" role="application" aria-label="Memory game">
+    <header>
+      <h1>لعبة الذاكرة — Memory</h1>
+      <div class="controls">
+        <div class="stats small">
+          <span>الحركات: <strong id="moves">0</strong></span>
+          <span>المطابقات: <strong id="matches">0</strong>/<strong id="totalPairs">8</strong></span>
+          <span>الوقت: <strong id="timer">0s</strong></span>
+        </div>
+        <button id="restart" class="btn" title="Restart">🔄 Restart</button>
+      </div>
+    </header>
+
+    <main>
+      <div id="board" class="board" aria-live="polite"></div>
+    </main>
+
+    <div class="footer">
+      <div class="difficulty small">مستوى: <select id="gridSize">
+        <option value="8">4x4 (سهل)</option>
+        <option value="12">4x6 (متوسط)</option>
+        <option value="18">6x6 (صعب)</option>
+      </select></div>
+      <div class="small">اضغط بطاقة باش تقلبها — يدعم اللمس</div>
+    </div>
+  </div>
+
+  <div id="winModal" class="modal" role="dialog" aria-modal="true">
+    <div class="dialog">
+      <h2>مبروك! 🎉</h2>
+      <p id="winText">كمالّت اللعبة في <span id="winMoves"></span> حركات و <span id="winTime"></span> ث.</p>
+      <button id="playAgain" class="btn">نعاود اللعب</button>
+    </div>
+  </div>
+
+  <script>
+    // emojis for cards (can easily change)
+    const EMOJIS = ['🍎','🍌','🍇','🍓','🍉','🍒','🍍','🥝','🍑','🥥','🍋','🍊','🥭','🍐','🍈','🍅','🫐','🥑','🌽','🥕'];
+
+    const boardEl = document.getElementById('board');
+    const movesEl = document.getElementById('moves');
+    const matchesEl = document.getElementById('matches');
+    const totalPairsEl = document.getElementById('totalPairs');
+    const restartBtn = document.getElementById('restart');
+    const gridSelect = document.getElementById('gridSize');
+    const timerEl = document.getElementById('timer');
+    const modal = document.getElementById('winModal');
+    const playAgain = document.getElementById('playAgain');
+    const winMoves = document.getElementById('winMoves');
+    const winTime = document.getElementById('winTime');
+
+    let firstCard = null;
+    let secondCard = null;
+    let lockBoard = false;
+    let moves = 0;
+    let matches = 0;
+    let totalPairs = 8;
+    let timer = null;
+    let seconds = 0;
+    let started = false;
+
+    function init(){
+      // read grid size (number of cards)
+      const cardsCount = parseInt(gridSelect.value, 10); // e.g., 8 means 8 pairs? we treat as total cards
+      // We'll interpret option values as total cards: 8 -> 4x4 grid (16 cards), but for simplicity we map:
+      // actually options given: 8,12,18 represent pairs count. We'll use them as PAIRS.
+      const pairs = cardsCount;
+      totalPairs = pairs;
+      totalPairsEl.textContent = totalPairs;
+      resetState();
+      const deck = buildDeck(pairs);
+      renderBoard(deck);
+    }
+
+    function resetState(){
+      firstCard = null;
+      secondCard = null;
+      lockBoard = false;
+      moves = 0;
+      matches = 0;
+      movesEl.textContent = moves;
+      matchesEl.textContent = matches;
+      seconds = 0;
+      timerEl.textContent = '0s';
+      clearInterval(timer);
+      started = false;
+      modal.classList.remove('show');
+    }
+
+    function buildDeck(pairs){
+      // pick first 'pairs' emojis from EMOJIS
+      const items = EMOJIS.slice(0);
+      // shuffle source then take needed
+      shuffleArray(items);
+      const chosen = items.slice(0, pairs);
+      // duplicate and shuffle
+      const deck = shuffleArray([...chosen, ...chosen].map((val, idx) => ({
+        id: idx + '-' + val,
+        val
+      })));
+      return deck;
+    }
+
+    function renderBoard(deck){
+      boardEl.innerHTML = '';
+      // adjust columns depending on total cards (pairs*2)
+      const totalCards = deck.length;
+      // set grid columns heuristic
+      if (totalCards % 6 === 0) {
+        boardEl.style.gridTemplateColumns = 'repeat(6, 1fr)';
+      } else if (totalCards % 5 === 0) {
+        boardEl.style.gridTemplateColumns = 'repeat(5, 1fr)';
+      } else if (totalCards % 4 === 0) {
+        boardEl.style.gridTemplateColumns = 'repeat(4, 1fr)';
+      } else {
+        boardEl.style.gridTemplateColumns = 'repeat(3, 1fr)';
+      }
+
+      deck.forEach(cardData => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.dataset.value = cardData.val;
+        card.innerHTML = `
+          <div class="inner">
+            <div class="face front">${cardData.val}</div>
+            <div class="face back">❓</div>
+          </div>
+        `;
+        card.addEventListener('click', onCardClick, {passive:true});
+        // support keyboard (Enter/Space)
+        card.tabIndex = 0;
+        card.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            card.click();
+          }
+        });
+        boardEl.appendChild(card);
+      });
+    }
+
+    function onCardClick(e){
+      const card = e.currentTarget;
+      if (lockBoard) return;
+      if (card === firstCard) return;
+      if (!started){
+        started = true;
+        startTimer();
+      }
+
+      flipCard(card);
+
+      if (!firstCard){
+        firstCard = card;
+        return;
+      }
+
+      secondCard = card;
+      moves++;
+      movesEl.textContent = moves;
+      checkForMatch();
+    }
+
+    function flipCard(card){
+      card.classList.add('flipped');
+      // small haptic-ish effect via scale (not necessary)
+      setTimeout(()=> card.classList.add('flipped-anim'), 10);
+    }
+
+    function unflip(card){
+      card.classList.remove('flipped');
+      card.classList.remove('flipped-anim');
+    }
+
+    function checkForMatch(){
+      const isMatch = firstCard.dataset.value === secondCard.dataset.value;
+      if (isMatch){
+        disableMatched();
+      } else {
+        unflipCards();
+      }
+    }
+
+    function disableMatched(){
+      firstCard.classList.add('matched');
+      secondCard.classList.add('matched');
+      // remove click listeners to be safe
+      firstCard.removeEventListener('click', onCardClick);
+      secondCard.removeEventListener('click', onCardClick);
+      matches++;
+      matchesEl.textContent = matches;
+      firstCard = null;
+      secondCard = null;
+      if (matches === totalPairs) {
+        finishGame();
+      }
+    }
+
+    function unflipCards(){
+      lockBoard = true;
+      setTimeout(() => {
+        unflip(firstCard);
+        unflip(secondCard);
+        firstCard = null;
+        secondCard = null;
+        lockBoard = false;
+      }, 700);
+    }
+
+    function finishGame(){
+      clearInterval(timer);
+      // show modal
+      winMoves.textContent = moves;
+      winTime.textContent = seconds;
+      modal.classList.add('show');
+    }
+
+    function startTimer(){
+      timer = setInterval(() => {
+        seconds++;
+        timerEl.textContent = seconds + 's';
+      }, 1000);
+    }
+
+    function restartGame(){
+      resetState();
+      init();
+    }
+
+    // utility: Fisher-Yates shuffle
+    function shuffleArray(array){
+      let m = array.length, t, i;
+      while (m){
+        i = Math.floor(Math.random() * m--);
+        t = array[m];
+        array[m] = array[i];
+        array[i] = t;
+      }
+      return array;
+    }
+
+    // events
+    restartBtn.addEventListener('click', restartGame);
+    gridSelect.addEventListener('change', restartGame);
+    playAgain.addEventListener('click', restartGame);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.classList.remove('show');
+    });
+
+    // init first time
+    init();
+
+    // make cards slightly tap-friendly: prevent double-tap zoom on iOS by setting touch-action and meta viewport above
+  </script>
+</body>
+</html>
